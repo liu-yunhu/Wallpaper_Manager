@@ -10,6 +10,8 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
+from utils.paths import get_config_path
+
 logger = logging.getLogger(__name__)
 
 # 仅这些键会被持久化与回写（避免污染 Flask 内置配置）
@@ -28,7 +30,8 @@ class ConfigAPI:
 
     def __init__(self, config: dict):
         self.config = config
-        self.config_file = Path('config.json')
+        # 配置文件位于数据目录（打包后为 %APPDATA%\WallpaperManager\config.json）
+        self.config_file = get_config_path()
 
     def get_config(self) -> dict:
         """获取当前配置（仅返回自定义键）"""

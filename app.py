@@ -6,8 +6,6 @@ Wallpaper Engine Web Manager
 
 import json
 import logging
-import os
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -15,34 +13,13 @@ from flask import Flask, render_template, jsonify, request, send_file
 
 from api.config import ConfigAPI
 from api.wallpaper import WallpaperAPI
+from utils.paths import get_config_path, get_data_dir
 
 logger = logging.getLogger(__name__)
 
 
-def _get_data_dir() -> Path:
-    """
-    获取应用数据目录
-    打包后使用 %APPDATA%\\WallpaperManager，确保任何启动方式下均可写入；
-    开发环境使用项目根目录。
-    """
-    if getattr(sys, 'frozen', False):
-        # PyInstaller 打包环境：优先使用用户 APPDATA 目录（不受启动目录影响）
-        appdata = os.environ.get('APPDATA')
-        if appdata:
-            data_dir = Path(appdata) / 'WallpaperManager'
-            try:
-                data_dir.mkdir(parents=True, exist_ok=True)
-                return data_dir
-            except OSError:
-                logger.warning("无法创建数据目录 %s，退化到 exe 所在目录", data_dir)
-        # 退化方案：exe 所在目录
-        return Path(sys.executable).parent
-    # 开发环境：项目根目录
-    return Path('.')
-
-
 # 搜索历史记录文件路径（打包后位于 %APPDATA%\WallpaperManager\）
-SEARCH_HISTORY_FILE = _get_data_dir() / 'search_history.json'
+SEARCH_HISTORY_FILE = get_data_dir() / 'search_history.json'
 MAX_HISTORY_SIZE = 20
 
 
@@ -103,7 +80,7 @@ def create_app(config: Optional[dict] = None):
     if config is not None:
         app.config.update(config)
     else:
-        config_path = Path('config.json')
+        config_path = get_config_path()
         if config_path.exists():
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:

@@ -19,6 +19,7 @@ except Exception:
 
 # Import the Flask app
 from app import create_app
+from utils.paths import get_config_path
 
 def open_browser(url='http://127.0.0.1:5000', delay=1):
     """Open browser after a delay"""
@@ -39,9 +40,8 @@ def main():
     # Get configuration
     try:
         import json
-        from pathlib import Path
-        
-        config_path = Path('config.json')
+
+        config_path = get_config_path()
         if config_path.exists():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
