@@ -1,21 +1,37 @@
 """
 Configuration API
-Handles application configuration management
+应用配置管理：读写 config.json
 """
 
 import json
+import logging
+import shutil
+import traceback
 from pathlib import Path
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# 仅这些键会被持久化与回写（避免污染 Flask 内置配置）
+_CUSTOM_CONFIG_KEYS = [
+    'steam_library_path',
+    'steam_userdata_path',
+    'workshop_file',
+    'content_path',
+    'server',
+    'preview'
+]
 
 
 class ConfigAPI:
-    """Configuration management API"""
-    
-    def __init__(self, config):
+    """配置管理 API"""
+
+    def __init__(self, config: dict):
         self.config = config
         self.config_file = Path('config.json')
-    
-    def get_config(self):
-        """Get current configuration"""
+
+    def get_config(self) -> dict:
+        """获取当前配置（仅返回自定义键）"""
         return {
             'steam_library_path': self.config.get('steam_library_path', ''),
             'steam_userdata_path': self.config.get('steam_userdata_path', ''),
@@ -24,98 +40,57 @@ class ConfigAPI:
             'server': self.config.get('server', {}),
             'preview': self.config.get('preview', {})
         }
-    
-    def update_config(self, new_config):
-        """Update configuration"""
-        try:
-            if not new_config:
-                print("Error: Empty config data received")
-                return False
-            
-            print(f"Updating config with: {new_config}")
-            
-            # Validate config structure
-            if not isinstance(new_config, dict):
-                print("Error: Config must be a dictionary")
-                return False
-            
-            # Only update our custom config items, not Flask's built-in config
-            custom_config_keys = [
-                'steam_library_path',
-                'steam_userdata_path',
-                'workshop_file', 
-                'content_path',
-                'server',
-                'preview'
-            ]
-            
-            # Load existing custom config from file
-            file_config = {}
-            if self.config_file.exists():
-                try:
-                    with open(self.config_file, 'r', encoding='utf-8') as f:
-                        file_config = json.load(f)
-                except Exception as e:
-                    print(f"Warning: Could not load existing config: {e}")
-                    file_config = {}
-            
-            # Update only the provided keys
-            for key, value in new_config.items():
-                if key in custom_config_keys:
-                    file_config[key] = value
-                    # Also update in-memory config for Flask
-                    self.config[key] = value
-            
-            # Ensure config file directory exists
-            self.config_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save to file with backup
+
+    def update_config(self, new_config: Optional[dict]) -> bool:
+        """更新配置（仅自定义键），先备份再写入"""
+        if not new_config:
+            logger.warning("收到空的配置数据")
+            return False
+
+        if not isinstance(new_config, dict):
+            logger.error("配置必须是字典类型")
+            return False
+
+        logger.debug("更新配置: %s", new_config)
+
+        # 读取现有配置文件
+        file_config: dict = {}
+        if self.config_file.exists():
             try:
-                # Create backup if file exists
-                if self.config_file.exists():
-                    backup_file = self.config_file.with_suffix('.json.bak')
-                    import shutil
-                    shutil.copy2(self.config_file, backup_file)
-                
-                # Write new config (only custom keys)
-                with open(self.config_file, 'w', encoding='utf-8') as f:
-                    json.dump(file_config, f, ensure_ascii=False, indent=2)
-                
-                print(f"Config saved successfully to {self.config_file}")
-                return True
-                
-            except PermissionError:
-                print(f"Error: Permission denied writing to {self.config_file}")
-                return False
-            except OSError as e:
-                print(f"Error: OS error writing config file: {e}")
-                return False
-            
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    file_config = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("读取现有配置失败，将覆盖: %s", e)
+                file_config = {}
+
+        # 仅更新提供的自定义键
+        for key, value in new_config.items():
+            if key in _CUSTOM_CONFIG_KEYS:
+                file_config[key] = value
+                # 同步更新内存中的配置
+                self.config[key] = value
+
+        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # 写入前备份
+            if self.config_file.exists():
+                backup_file = self.config_file.with_suffix('.json.bak')
+                shutil.copy2(self.config_file, backup_file)
+
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(file_config, f, ensure_ascii=False, indent=2)
+
+            logger.info("配置已保存到 %s", self.config_file)
+            return True
+
+        except PermissionError:
+            logger.error("写入配置文件被拒绝（权限不足）: %s", self.config_file)
+            return False
+        except OSError as e:
+            logger.error("写入配置文件失败: %s", e)
+            return False
         except Exception as e:
-            print(f"Error updating config: {e}")
-            import traceback
+            logger.error("更新配置时发生未预期错误: %s", e)
             traceback.print_exc()
             return False
-    
-    def get_steam_library_path(self):
-        """Get Steam library path"""
-        return self.config.get('steam_library_path', '')
-    
-    def get_workshop_file_path(self):
-        """Get workshop file path"""
-        if self.config.get('workshop_file'):
-            return self.config['workshop_file']
-        else:
-            # steam_library_path now points directly to 431960 directory
-            # Go up to workshop directory to find the acf file
-            content_path = self.get_steam_library_path()
-            workshop_path = Path(content_path).parent.parent  # Up from 431960/content to workshop
-            return str(workshop_path / "appworkshop_431960.acf")
-    
-    def get_content_path(self):
-        """Get content path (now steam_library_path points directly to 431960)"""
-        if self.config.get('content_path'):
-            return Path(self.config['content_path'])
-        else:
-            # steam_library_path now directly points to the 431960 directory
-            return Path(self.get_steam_library_path())

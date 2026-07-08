@@ -1,188 +1,153 @@
 # -*- coding: utf-8 -*-
 """
 Wallpaper Engine Web Manager
-Flask web application for managing Wallpaper Engine subscriptions
+管理 Wallpaper Engine 订阅的 Flask Web 应用
 """
 
 import json
-import os
+import logging
 from pathlib import Path
+from typing import Optional
+
 from flask import Flask, render_template, jsonify, request, send_file
-from api.wallpaper import WallpaperAPI
+
 from api.config import ConfigAPI
+from api.wallpaper import WallpaperAPI
+
+logger = logging.getLogger(__name__)
 
 
-def create_app():
-    """Application factory"""
+def _paginate(items: list, page: int, page_size: int) -> list:
+    """对列表进行分页切片"""
+    start = (page - 1) * page_size
+    end = start + page_size
+    return items[start:end]
+
+
+def _wallpaper_section(wallpaper_api: WallpaperAPI, ids: list, page: int,
+                       page_size: int, subscribed: bool) -> dict:
+    """
+    构建单个分区（已订阅/未订阅）的响应数据
+
+    流程：分页切片 ID -> 仅为本页并行计算完整信息
+    """
+    page_ids = _paginate(ids, page, page_size)
+    wallpapers = wallpaper_api.get_wallpaper_info_batch(page_ids, subscribed=subscribed)
+    return {
+        'total': len(ids),
+        'page': page,
+        'page_size': page_size,
+        'wallpapers': wallpapers
+    }
+
+
+def create_app(config: Optional[dict] = None):
+    """
+    Flask 应用工厂
+
+    :param config: 可选的配置字典，未提供时从 config.json 加载（便于测试注入）
+    """
     app = Flask(__name__)
-    
-    # Load configuration
-    config_path = Path('config.json')
-    if config_path.exists():
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+
+    # 加载配置：优先使用传入的，否则从 config.json 读取
+    if config is not None:
         app.config.update(config)
     else:
-        # Default configuration (path now points directly to 431960 directory)
-        app.config.update({
-            'steam_library_path': 'F:\\SteamLibrary\\steamapps\\workshop\\content\\431960',
-            'server': {
-                'host': '127.0.0.1',
-                'port': 5000,
-                'debug': True
-            }
-        })
-    
-    # Initialize APIs
+        config_path = Path('config.json')
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    app.config.update(json.load(f))
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("读取 config.json 失败，使用默认配置: %s", e)
+                app.config.update(_default_config())
+        else:
+            app.config.update(_default_config())
+
+    # 初始化 API
     wallpaper_api = WallpaperAPI(app.config)
     config_api = ConfigAPI(app.config)
-    
+
     @app.route('/')
     def index():
-        """Main page"""
+        """主页"""
         return render_template('index.html')
-    
+
     @app.route('/config-test')
     def config_test():
-        """Configuration test page"""
+        """配置测试页"""
         return render_template('config_test.html')
-    
+
     @app.route('/api/wallpapers')
     def get_wallpapers():
-        """Get wallpapers with pagination"""
+        """分页获取壁纸列表（已订阅/未订阅分区）"""
         try:
             user_filter = request.args.get('user', None)
             search_query = request.args.get('search', None)
-            # 支持独立的页码参数
-            subscribed_page = int(request.args.get('subscribed_page', request.args.get('page', 1)))
-            unsubscribed_page = int(request.args.get('unsubscribed_page', request.args.get('page', 1)))
+            # 支持独立的页码参数，兼容旧的 page 参数
+            subscribed_page = int(request.args.get('subscribed_page',
+                                                   request.args.get('page', 1)))
+            unsubscribed_page = int(request.args.get('unsubscribed_page',
+                                                     request.args.get('page', 1)))
             page_size = int(request.args.get('page_size', 20))
 
+            # 1. 取廉价的 ID 列表（按大小降序）
             if user_filter and user_filter != 'all':
-                # 用户过滤也做分页处理
-                subscribed = wallpaper_api.get_wallpapers_by_user(user_filter, subscribed_only=True)
-                unsubscribed = wallpaper_api.get_wallpapers_by_user(user_filter, subscribed_only=False)
-                # 搜索和分页顺序：先搜索再分页
-                if search_query and search_query.strip():
-                    search_term = search_query.strip().lower()
-                    def matches_search(wallpaper):
-                        title_match = search_term in wallpaper.get('title', '').lower()
-                        return title_match
-                    subscribed = [w for w in subscribed if matches_search(w)]
-                    unsubscribed = [w for w in unsubscribed if matches_search(w)]
-                # 分别分页切片
-                sub_start = (subscribed_page - 1) * page_size
-                sub_end = sub_start + page_size
-                unsub_start = (unsubscribed_page - 1) * page_size
-                unsub_end = unsub_start + page_size
-                subscribed_result = subscribed[sub_start:sub_end]
-                unsubscribed_result = unsubscribed[unsub_start:unsub_end]
-                return jsonify({
-                    'success': True,
-                    'data': {
-                        'subscribed': {
-                            'total': len(subscribed),
-                            'page': subscribed_page,
-                            'page_size': page_size,
-                            'wallpapers': subscribed_result
-                        },
-                        'unsubscribed': {
-                            'total': len(unsubscribed),
-                            'page': unsubscribed_page,
-                            'page_size': page_size,
-                            'wallpapers': unsubscribed_result
-                        }
-                    }
-                })
+                sub_ids = wallpaper_api.list_wallpaper_ids_by_user(user_filter, subscribed_only=True)
+                unsub_ids = wallpaper_api.list_wallpaper_ids_by_user(user_filter, subscribed_only=False)
             else:
-                # 分页获取所有壁纸，搜索和分页顺序：先搜索再分页
-                all_subscribed = wallpaper_api.get_subscribed_wallpapers()
-                all_unsubscribed = wallpaper_api.get_unsubscribed_wallpapers()
-                if search_query and search_query.strip():
-                    search_term = search_query.strip().lower()
-                    def matches_search(wallpaper):
-                        title_match = search_term in wallpaper.get('title', '').lower()
-                        return title_match
-                    all_subscribed = [w for w in all_subscribed if matches_search(w)]
-                    all_unsubscribed = [w for w in all_unsubscribed if matches_search(w)]
-                # 分别分页切片
-                sub_start = (subscribed_page - 1) * page_size
-                sub_end = sub_start + page_size
-                unsub_start = (unsubscribed_page - 1) * page_size
-                unsub_end = unsub_start + page_size
-                subscribed_result = all_subscribed[sub_start:sub_end]
-                unsubscribed_result = all_unsubscribed[unsub_start:unsub_end]
-                
-                return jsonify({
-                    'success': True,
-                    'data': {
-                        'subscribed': {
-                            'total': len(all_subscribed),
-                            'page': subscribed_page,
-                            'page_size': page_size,
-                            'wallpapers': subscribed_result
-                        },
-                        'unsubscribed': {
-                            'total': len(all_unsubscribed),
-                            'page': unsubscribed_page,
-                            'page_size': page_size,
-                            'wallpapers': unsubscribed_result
-                        }
-                    }
-                })
-        except Exception as e:
+                sub_ids = wallpaper_api.list_wallpaper_ids(subscribed=True)
+                unsub_ids = wallpaper_api.list_wallpaper_ids(subscribed=False)
+
+            # 2. 按标题搜索过滤（标题来自缓存）
+            sub_ids = wallpaper_api.filter_ids_by_search(sub_ids, search_query)
+            unsub_ids = wallpaper_api.filter_ids_by_search(unsub_ids, search_query)
+
+            # 3. 分页后仅为本页计算完整信息
             return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+                'success': True,
+                'data': {
+                    'subscribed': _wallpaper_section(
+                        wallpaper_api, sub_ids, subscribed_page, page_size, subscribed=True),
+                    'unsubscribed': _wallpaper_section(
+                        wallpaper_api, unsub_ids, unsubscribed_page, page_size, subscribed=False)
+                }
+            })
+        except Exception as e:
+            logger.error("获取壁纸列表失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/wallpapers/<wallpaper_id>')
     def get_wallpaper(wallpaper_id):
-        """Get specific wallpaper details"""
+        """获取单个壁纸详情"""
         try:
             wallpaper = wallpaper_api.get_wallpaper_details(wallpaper_id)
             if wallpaper:
-                return jsonify({
-                    'success': True,
-                    'data': wallpaper
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': 'Wallpaper not found'
-                }), 404
+                return jsonify({'success': True, 'data': wallpaper})
+            return jsonify({'success': False, 'error': 'Wallpaper not found'}), 404
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("获取壁纸详情失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/wallpapers/<wallpaper_id>/preview')
     def get_wallpaper_preview(wallpaper_id):
-        """Get wallpaper preview image"""
+        """获取壁纸预览图"""
         try:
             preview_path = wallpaper_api.get_preview_image(wallpaper_id)
-            if preview_path and os.path.exists(preview_path):
+            if preview_path and Path(preview_path).exists():
                 return send_file(preview_path)
-            else:
-                # Return placeholder image
-                placeholder_path = Path('static/images/no-preview.png')
-                if placeholder_path.exists():
-                    return send_file(placeholder_path)
-                else:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Preview not available'
-                    }), 404
+            # 返回占位图
+            placeholder_path = Path('static/images/no-preview.png')
+            if placeholder_path.exists():
+                return send_file(placeholder_path)
+            return jsonify({'success': False, 'error': 'Preview not available'}), 404
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("获取预览图失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/wallpapers/<wallpaper_id>', methods=['DELETE'])
     def delete_wallpaper(wallpaper_id):
-        """Delete a wallpaper"""
+        """删除壁纸"""
         try:
             success = wallpaper_api.delete_wallpaper(wallpaper_id)
             return jsonify({
@@ -190,14 +155,12 @@ def create_app():
                 'message': 'Wallpaper deleted successfully' if success else 'Failed to delete wallpaper'
             })
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("删除壁纸失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/wallpapers/<wallpaper_id>/open-folder', methods=['POST'])
     def open_wallpaper_folder(wallpaper_id):
-        """Open wallpaper folder in file explorer"""
+        """在文件资源管理器中打开壁纸文件夹"""
         try:
             success = wallpaper_api.open_wallpaper_folder(wallpaper_id)
             return jsonify({
@@ -205,125 +168,89 @@ def create_app():
                 'message': 'Folder opened successfully' if success else 'Failed to open folder'
             })
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("打开文件夹失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/config')
     def get_config():
-        """Get current configuration"""
+        """获取当前配置"""
         try:
-            return jsonify({
-                'success': True,
-                'data': config_api.get_config()
-            })
+            return jsonify({'success': True, 'data': config_api.get_config()})
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("获取配置失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/config', methods=['POST'])
     def update_config():
-        """Update configuration"""
+        """更新配置"""
         try:
             new_config = request.get_json()
             if not new_config:
-                return jsonify({
-                    'success': False,
-                    'error': '请求数据为空'
-                }), 400
-            
+                return jsonify({'success': False, 'error': '请求数据为空'}), 400
+
             success = config_api.update_config(new_config)
             if success:
-                return jsonify({
-                    'success': True,
-                    'message': '配置保存成功'
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': '配置保存失败'
-                }), 500
+                # 配置变更后清除 SteamParser 缓存，使新路径立即生效
+                wallpaper_api.steam_parser.invalidate_cache()
+                return jsonify({'success': True, 'message': '配置保存成功'})
+            return jsonify({'success': False, 'error': '配置保存失败'}), 500
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("更新配置失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/stats')
     def get_stats():
-        """Get storage and subscription statistics"""
+        """获取存储与订阅统计"""
         try:
             user_id = request.args.get('user', None)
             stats = wallpaper_api.get_statistics(user_id)
-            return jsonify({
-                'success': True,
-                'data': stats
-            })
+            return jsonify({'success': True, 'data': stats})
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("获取统计失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/users')
     def get_users():
-        """Get all Steam users with their subscription info"""
+        """获取所有 Steam 用户及其订阅信息"""
         try:
             from utils.steam_parser import SteamParser
             parser = SteamParser(app.config)
-            
-            # Get all subscription data
+
             all_data = parser.get_all_subscription_data()
             users = []
-            
             for user_id, user_subscriptions in all_data.items():
-                active_subscriptions = [item_id for item_id, details in user_subscriptions.items() 
-                                      if details['is_active']]
+                active_subscriptions = [item_id for item_id, details in user_subscriptions.items()
+                                        if details['is_active']]
                 users.append({
                     'id': user_id,
                     'display_name': f"用户 {user_id}",
                     'subscription_count': len(active_subscriptions)
                 })
-            
-            return jsonify({
-                'success': True,
-                'data': users
-            })
+
+            return jsonify({'success': True, 'data': users})
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
-    
+            logger.error("获取用户列表失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/steam-paths')
     def get_steam_paths():
-        """Get current Steam paths being used by the system"""
+        """获取系统当前使用的 Steam 路径"""
         try:
             from utils.steam_parser import SteamParser
-            from api.config import ConfigAPI
-            
-            # Get configuration
-            config_api = ConfigAPI(app.config)
+
             config_data = config_api.get_config()
             configured_userdata = config_data.get('steam_userdata_path', '') if config_data else ''
-            
-            # Initialize parser with current config
+
             parser = SteamParser(app.config)
-            
-            # Get the actual paths being used
             userdata_path = parser.get_steam_user_data_path()
             content_path = parser.get_content_path()
-            
-            # Check if we're using fallback
+
+            # 检测是否回退到了非配置路径
             using_fallback = False
             if configured_userdata and configured_userdata.strip():
-                # If a path is configured, check if it's different from what's actually used
                 actual_path_str = str(userdata_path) if userdata_path else ''
                 using_fallback = configured_userdata.strip() != actual_path_str
-            
+
             return jsonify({
                 'success': True,
                 'data': {
@@ -334,48 +261,57 @@ def create_app():
                 }
             })
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 500
+            logger.error("获取 Steam 路径失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.errorhandler(404)
     def not_found(error):
-        return jsonify({
-            'success': False,
-            'error': 'Endpoint not found'
-        }), 404
-    
+        return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
+
     @app.errorhandler(500)
     def internal_error(error):
-        return jsonify({
-            'success': False,
-            'error': 'Internal server error'
-        }), 500
-    
+        logger.error("内部错误: %s", error)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
     return app
 
 
+def _default_config() -> dict:
+    """默认配置（路径直接指向 431960 目录）"""
+    return {
+        'steam_library_path': 'F:\\SteamLibrary\\steamapps\\workshop\\content\\431960',
+        'server': {
+            'host': '127.0.0.1',
+            'port': 5000,
+            'debug': True
+        }
+    }
+
+
 def main():
-    """Main function"""
+    """主函数"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
+
     app = create_app()
-    
-    # Get server configuration
+
     server_config = app.config.get('server', {})
     host = server_config.get('host', '127.0.0.1')
     port = server_config.get('port', 5000)
     debug = server_config.get('debug', True)
-    
-    print("🚀 Starting Wallpaper Engine Web Manager...")
-    print(f"📍 Server: http://{host}:{port}")
-    print(f"🔧 Debug mode: {'On' if debug else 'Off'}")
-    
+
+    logger.info("启动 Wallpaper Engine Web Manager")
+    logger.info("服务地址: http://%s:%s", host, port)
+    logger.info("调试模式: %s", '开启' if debug else '关闭')
+
     try:
         app.run(host=host, port=port, debug=debug)
     except KeyboardInterrupt:
-        print("\n👋 Server stopped by user")
+        logger.info("用户已停止服务")
     except Exception as e:
-        print(f"❌ Server error: {e}")
+        logger.error("服务出错: %s", e)
 
 
 if __name__ == '__main__':
