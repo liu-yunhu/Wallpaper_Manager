@@ -10,6 +10,13 @@ import webbrowser
 import sys
 import os
 
+# 确保 stdout/stderr 使用 UTF-8，避免 Windows GBK 控制台无法编码 emoji 等字符导致崩溃
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Import the Flask app
 from app import create_app
 
