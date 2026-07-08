@@ -6,6 +6,8 @@ Wallpaper Engine Web Manager
 
 import json
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +17,54 @@ from api.config import ConfigAPI
 from api.wallpaper import WallpaperAPI
 
 logger = logging.getLogger(__name__)
+
+
+def _get_data_dir() -> Path:
+    """
+    获取应用数据目录
+    打包后使用 %APPDATA%\\WallpaperManager，确保任何启动方式下均可写入；
+    开发环境使用项目根目录。
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包环境：优先使用用户 APPDATA 目录（不受启动目录影响）
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            data_dir = Path(appdata) / 'WallpaperManager'
+            try:
+                data_dir.mkdir(parents=True, exist_ok=True)
+                return data_dir
+            except OSError:
+                logger.warning("无法创建数据目录 %s，退化到 exe 所在目录", data_dir)
+        # 退化方案：exe 所在目录
+        return Path(sys.executable).parent
+    # 开发环境：项目根目录
+    return Path('.')
+
+
+# 搜索历史记录文件路径（打包后位于 %APPDATA%\WallpaperManager\）
+SEARCH_HISTORY_FILE = _get_data_dir() / 'search_history.json'
+MAX_HISTORY_SIZE = 20
+
+
+def _load_search_history() -> list:
+    """从文件加载搜索历史记录"""
+    try:
+        if SEARCH_HISTORY_FILE.exists():
+            with open(SEARCH_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("读取搜索历史失败: %s", e)
+    return []
+
+
+def _save_search_history(history: list) -> None:
+    """保存搜索历史记录到文件"""
+    try:
+        with open(SEARCH_HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        logger.error("保存搜索历史失败: %s", e)
 
 
 def _paginate(items: list, page: int, page_size: int) -> list:
@@ -207,6 +257,37 @@ def create_app(config: Optional[dict] = None):
             return jsonify({'success': True, 'data': stats})
         except Exception as e:
             logger.error("获取统计失败: %s", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/search-history', methods=['GET', 'POST', 'DELETE'])
+    def search_history():
+        """搜索历史记录管理"""
+        try:
+            if request.method == 'GET':
+                history = _load_search_history()
+                return jsonify({'success': True, 'data': history})
+
+            elif request.method == 'POST':
+                data = request.get_json(silent=True) or {}
+                keyword = (data.get('keyword', '') or '').strip()
+                if not keyword:
+                    return jsonify({'success': False, 'error': '搜索关键词不能为空'}), 400
+
+                history = _load_search_history()
+                # 去重：移除已存在的相同关键词
+                history = [h for h in history if h != keyword]
+                # 插入到列表最前面
+                history.insert(0, keyword)
+                # 限制最大条数
+                history = history[:MAX_HISTORY_SIZE]
+                _save_search_history(history)
+                return jsonify({'success': True, 'data': history})
+
+            elif request.method == 'DELETE':
+                _save_search_history([])
+                return jsonify({'success': True, 'data': []})
+        except Exception as e:
+            logger.error("搜索历史操作失败: %s", e)
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/users')

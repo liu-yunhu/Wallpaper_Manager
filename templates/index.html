@@ -55,12 +55,32 @@
 <!-- Search and Filter -->
 <div class="row mb-4">
     <div class="col-md-8">
-        <div class="input-group">
-            <span class="input-group-text">
-                <i class="fas fa-search"></i>
-            </span>
-            <input type="text" class="form-control" id="searchInput" 
-                   placeholder="搜索壁纸标题...">
+        <div class="search-wrapper">
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="fas fa-search"></i>
+                </span>
+                <input type="text" class="form-control" id="searchInput"
+                       placeholder="搜索壁纸标题..." autocomplete="off">
+                <button class="btn btn-primary" id="searchButton" type="button" title="搜索">
+                    <i class="fas fa-search"></i> 搜索
+                </button>
+                <button class="btn btn-outline-secondary" id="searchHistoryToggle" type="button" title="搜索历史">
+                    <i class="fas fa-history"></i>
+                </button>
+            </div>
+            <!-- 搜索历史下拉面板 -->
+            <div class="search-history-dropdown" id="searchHistoryDropdown" style="display: none;">
+                <div class="search-history-header">
+                    <span class="search-history-title">搜索历史</span>
+                    <button class="btn btn-link btn-sm text-danger" id="clearHistoryButton" type="button">
+                        <i class="fas fa-trash-alt me-1"></i>清除历史
+                    </button>
+                </div>
+                <ul class="search-history-list" id="searchHistoryList">
+                    <!-- JS 动态填充历史记录 -->
+                </ul>
+            </div>
         </div>
     </div>
     <div class="col-md-4">

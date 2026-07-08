@@ -5,3 +5,4 @@ __pycache__/
 /build
 /dist
 /config.json.bak
+search_history.json

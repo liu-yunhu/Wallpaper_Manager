@@ -733,3 +733,107 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.5);
 }
+
+/* ==================== 搜索历史下拉面板 ==================== */
+
+.search-wrapper {
+    position: relative;
+}
+
+.search-wrapper .input-group .form-control {
+    border-radius: 0;
+}
+
+.search-wrapper .input-group .btn-primary {
+    border-radius: 0;
+}
+
+.search-wrapper .input-group .btn-outline-secondary {
+    border-radius: 0 10px 10px 0;
+}
+
+/* 搜索历史下拉面板 */
+.search-history-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    margin-top: 4px;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.25);
+    max-height: 320px;
+    overflow: hidden;
+}
+
+.search-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.search-history-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.search-history-header .btn-link {
+    font-size: 0.8rem;
+    text-decoration: none;
+    padding: 0;
+}
+
+.search-history-header .btn-link:hover {
+    text-decoration: underline;
+}
+
+.search-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.search-history-item {
+    display: flex;
+    align-items: center;
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.search-history-item:hover {
+    background: rgba(0, 123, 255, 0.08);
+}
+
+.search-history-item-icon {
+    font-size: 0.75rem;
+    color: #adb5bd;
+    margin-right: 0.6rem;
+    flex-shrink: 0;
+}
+
+.search-history-item-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-history-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: #adb5bd;
+    font-size: 0.85rem;
+}

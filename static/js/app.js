@@ -10,7 +10,7 @@ class WallpaperManager {
         this.users = [];
         this.currentUserFilter = 'all';
         this.currentSearchQuery = '';
-        this.searchTimeout = null;
+        this.searchHistory = [];
 
         // 分页相关状态
         this.subscribedPage = 1;
@@ -26,27 +26,60 @@ class WallpaperManager {
         this.setupEventListeners();
         this.loadConfiguration();
         this.loadUsers();
+        this.loadSearchHistory();
         this.loadData();
     }
     
     setupEventListeners() {
-        // Search input
+        // 搜索按钮点击触发搜索
+        const searchButton = document.getElementById('searchButton');
+        if (searchButton) {
+            searchButton.addEventListener('click', () => this.executeSearch());
+        }
+
+        // 搜索输入框回车键触发搜索
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
-            console.log('Search input found, setting up event listener');
-            searchInput.addEventListener('input', (e) => {
-                this.currentSearchQuery = e.target.value;
-                console.log('Search query changed to:', this.currentSearchQuery);
-                // Debounce search
-                clearTimeout(this.searchTimeout);
-                this.searchTimeout = setTimeout(() => {
-                    console.log('Executing search with query:', this.currentSearchQuery);
-                    this.loadData();
-                }, 300);
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.executeSearch();
+                }
             });
-        } else {
-            console.error('Search input not found!');
+            // 点击输入框时显示搜索历史
+            searchInput.addEventListener('focus', () => {
+                if (this.searchHistory.length > 0) {
+                    this.showHistoryDropdown();
+                }
+            });
         }
+
+        // 搜索历史切换按钮
+        const historyToggle = document.getElementById('searchHistoryToggle');
+        if (historyToggle) {
+            historyToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleHistoryDropdown();
+            });
+        }
+
+        // 清除历史按钮
+        const clearHistoryButton = document.getElementById('clearHistoryButton');
+        if (clearHistoryButton) {
+            clearHistoryButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.clearSearchHistory();
+            });
+        }
+
+        // 点击页面其他地方关闭历史下拉
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('searchHistoryDropdown');
+            const wrapper = document.querySelector('.search-wrapper');
+            if (dropdown && wrapper && !wrapper.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
         
         // User filter
         const userFilter = document.getElementById('userFilter');
@@ -202,6 +235,126 @@ class WallpaperManager {
             throw error;
         }
     }
+
+    // ==================== 搜索功能 ====================
+
+    executeSearch() {
+        const searchInput = document.getElementById('searchInput');
+        if (!searchInput) return;
+        const keyword = searchInput.value.trim();
+        this.currentSearchQuery = keyword;
+        // 重置分页到第一页
+        this.subscribedPage = 1;
+        this.unsubscribedPage = 1;
+        this.loadData();
+        // 保存搜索关键词到历史
+        if (keyword) {
+            this.saveSearchHistory(keyword);
+        }
+        // 关闭历史下拉
+        const dropdown = document.getElementById('searchHistoryDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+    }
+
+    async loadSearchHistory() {
+        try {
+            const response = await fetch('/api/search-history');
+            const result = await response.json();
+            if (result.success) {
+                this.searchHistory = result.data || [];
+            }
+        } catch (error) {
+            console.error('加载搜索历史失败:', error);
+        }
+    }
+
+    async saveSearchHistory(keyword) {
+        try {
+            const response = await fetch('/api/search-history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.searchHistory = result.data || [];
+                this.renderSearchHistory();
+            }
+        } catch (error) {
+            console.error('保存搜索历史失败:', error);
+        }
+    }
+
+    async clearSearchHistory() {
+        try {
+            const response = await fetch('/api/search-history', {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.searchHistory = [];
+                this.renderSearchHistory();
+                const dropdown = document.getElementById('searchHistoryDropdown');
+                if (dropdown) dropdown.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('清除搜索历史失败:', error);
+        }
+    }
+
+    showHistoryDropdown() {
+        this.renderSearchHistory();
+        const dropdown = document.getElementById('searchHistoryDropdown');
+        if (dropdown) dropdown.style.display = 'block';
+    }
+
+    toggleHistoryDropdown() {
+        const dropdown = document.getElementById('searchHistoryDropdown');
+        if (!dropdown) return;
+        if (dropdown.style.display === 'none' || !dropdown.style.display) {
+            this.showHistoryDropdown();
+        } else {
+            dropdown.style.display = 'none';
+        }
+    }
+
+    renderSearchHistory() {
+        const list = document.getElementById('searchHistoryList');
+        if (!list) return;
+        if (this.searchHistory.length === 0) {
+            list.innerHTML = '<li class="search-history-empty">暂无搜索历史</li>';
+            return;
+        }
+        list.innerHTML = '';
+        this.searchHistory.forEach(keyword => {
+            const li = document.createElement('li');
+            li.className = 'search-history-item';
+            li.title = `点击重新搜索: ${keyword}`;
+            li.dataset.keyword = keyword;
+            li.innerHTML = `
+                <i class="fas fa-search search-history-item-icon"></i>
+                <span class="search-history-item-text"></span>
+            `;
+            li.querySelector('.search-history-item-text').textContent = keyword;
+            li.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.searchFromHistory(keyword);
+            });
+            list.appendChild(li);
+        });
+    }
+
+    searchFromHistory(keyword) {
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = keyword;
+        this.currentSearchQuery = keyword;
+        this.subscribedPage = 1;
+        this.unsubscribedPage = 1;
+        this.loadData();
+        const dropdown = document.getElementById('searchHistoryDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+    }
+
     renderPagination() {
         // 已订阅分页
         this.renderSinglePagination('subscribedPagination', this.subscribedPage, this.subscribedTotal, (page) => {
