@@ -20,14 +20,14 @@ if errorlevel 1 (
     )
 )
 
-echo [1/4] Cleaning previous build...
+echo [1/3] Cleaning previous build...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 echo       Done!
 
 echo.
-echo [2/4] Building executable with PyInstaller...
-pyinstaller launcher.spec
+echo [2/3] Building executable with PyInstaller...
+python -m PyInstaller launcher.spec
 
 if errorlevel 1 (
     echo.
@@ -39,26 +39,18 @@ if errorlevel 1 (
 echo       Done!
 
 echo.
-echo [3/4] Copying config file...
-if exist dist\WallpaperManager.exe (
-    copy /y config.json dist\ >nul
-    echo       Done!
-) else (
-    echo [ERROR] Executable not found!
-    pause
-    exit /b 1
-)
-
-echo.
-echo [4/4] Build completed successfully!
+echo [3/3] Build completed successfully!
 echo.
 echo ========================================
 echo   Build Information
 echo ========================================
 echo   Output: dist\WallpaperManager.exe
-echo   Size: 
+echo   Size:
 for %%A in (dist\WallpaperManager.exe) do echo          %%~zA bytes
 echo ========================================
+echo.
+echo Note: config.json is bundled inside the exe. On first run it is
+echo copied to %%APPDATA%%\WallpaperManager\ and used from there.
 echo.
 echo You can now run: dist\WallpaperManager.exe
 echo.
