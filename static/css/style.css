@@ -740,6 +740,13 @@ body {
     position: relative;
 }
 
+/* 中大屏限制搜索区最大宽度，使搜索按钮与历史记录按钮靠左排列，布局更紧凑 */
+@media (min-width: 768px) {
+    .search-wrapper {
+        max-width: 540px;
+    }
+}
+
 .search-wrapper .input-group .form-control {
     border-radius: 0;
 }
@@ -750,6 +757,21 @@ body {
 
 .search-wrapper .input-group .btn-outline-secondary {
     border-radius: 0 10px 10px 0;
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    background: rgba(0, 123, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* 历史记录按钮悬停时填充主色，提升可点击辨识度 */
+.search-wrapper .input-group .btn-outline-secondary:hover {
+    color: #fff;
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.search-wrapper .input-group .btn-outline-secondary:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 /* 搜索历史下拉面板 */
