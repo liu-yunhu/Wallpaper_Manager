@@ -44,11 +44,21 @@ def _save_search_history(history: list) -> None:
         logger.error("保存搜索历史失败: %s", e)
 
 
+# 允许的每页条数预设值
+_ALLOWED_PAGE_SIZES = {10, 20, 50}
+_DEFAULT_PAGE_SIZE = 20
+
+
 def _paginate(items: list, page: int, page_size: int) -> list:
-    """对列表进行分页切片"""
+    """对列表进行分页切片，自动处理页码越界；page_size=0 表示返回全部"""
+    if page_size == 0:
+        return items, 1, 1
+    total_pages = max(1, (len(items) + page_size - 1) // page_size)
+    # 边界裁剪：页码超出范围时自动修正
+    page = max(1, min(page, total_pages))
     start = (page - 1) * page_size
     end = start + page_size
-    return items[start:end]
+    return items[start:end], page, total_pages
 
 
 def _wallpaper_section(wallpaper_api: WallpaperAPI, ids: list, page: int,
@@ -58,12 +68,13 @@ def _wallpaper_section(wallpaper_api: WallpaperAPI, ids: list, page: int,
 
     流程：分页切片 ID -> 仅为本页并行计算完整信息
     """
-    page_ids = _paginate(ids, page, page_size)
+    page_ids, clamped_page, total_pages = _paginate(ids, page, page_size)
     wallpapers = wallpaper_api.get_wallpaper_info_batch(page_ids, subscribed=subscribed)
     return {
         'total': len(ids),
-        'page': page,
+        'page': clamped_page,
         'page_size': page_size,
+        'total_pages': total_pages,
         'wallpapers': wallpapers
     }
 
@@ -116,7 +127,10 @@ def create_app(config: Optional[dict] = None):
                                                    request.args.get('page', 1)))
             unsubscribed_page = int(request.args.get('unsubscribed_page',
                                                      request.args.get('page', 1)))
-            page_size = int(request.args.get('page_size', 20))
+            page_size = int(request.args.get('page_size', _DEFAULT_PAGE_SIZE))
+            # 仅允许预设的每页条数，page_size=0 表示返回全部（导出用）
+            if page_size not in _ALLOWED_PAGE_SIZES and page_size != 0:
+                page_size = _DEFAULT_PAGE_SIZE
 
             # 1. 取廉价的 ID 列表（按大小降序）
             if user_filter and user_filter != 'all':

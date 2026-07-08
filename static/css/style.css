@@ -847,3 +847,189 @@ body {
     color: #adb5bd;
     font-size: 0.85rem;
 }
+
+/* ==================== 分页工具栏 ==================== */
+
+.pagination-toolbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+}
+
+/* 分页信息文字（左侧绝对定位，不参与居中流） */
+.pagination-info {
+    position: absolute;
+    left: 1rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #495057;
+    background: rgba(255, 255, 255, 0.88);
+    padding: 0.3rem 0.75rem;
+    border-radius: 8px;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 分页控件区（右侧）：翻页按钮 + 每页条数 + 页码跳转 */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* 每页条数选择器 */
+.page-size-wrap {
+    flex-shrink: 0;
+}
+
+.page-size-select {
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.85);
+    color: #495057;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.page-size-select:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.page-size-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.page-size-select option {
+    background: #4a3a6e;
+    color: #fff;
+}
+
+/* 页码跳转组件 */
+.page-jump-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.page-jump-label {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+}
+
+.page-jump-input {
+    width: 48px;
+    padding: 0.3rem 0.35rem;
+    font-size: 0.8rem;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.85);
+    color: #495057;
+    transition: all 0.3s ease;
+    outline: none;
+}
+
+.page-jump-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.page-jump-input::placeholder {
+    color: #adb5bd;
+}
+
+.page-jump-total {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+}
+
+.page-jump-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.85);
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.page-jump-btn:hover {
+    background: var(--primary-gradient);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+/* 分页按钮样式 - 覆盖 Bootstrap 默认 */
+.pagination .page-link {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #495057;
+    border-radius: 8px;
+    margin: 0 2px;
+    transition: all 0.3s ease;
+}
+
+.pagination .page-link:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.pagination .page-item.active .page-link {
+    background: var(--primary-gradient);
+    border-color: transparent;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.pagination .page-item.disabled .page-link {
+    background: rgba(255, 255, 255, 0.4);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+/* 小屏幕分页工具栏自适应 */
+@media (max-width: 768px) {
+    .pagination-toolbar {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .pagination-info {
+        position: static;
+        min-width: unset;
+        text-align: center;
+    }
+
+    .pagination-controls {
+        justify-content: center;
+        gap: 0.4rem;
+    }
+}

@@ -15,9 +15,12 @@ class WallpaperManager {
         // 分页相关状态
         this.subscribedPage = 1;
         this.unsubscribedPage = 1;
-        this.pageSize = 40;
+        this.pageSize = 20;
+        this.pageSizeOptions = [10, 20, 50];
         this.subscribedTotal = 0;
         this.unsubscribedTotal = 0;
+        this.subscribedTotalPages = 1;
+        this.unsubscribedTotalPages = 1;
 
         this.init();
     }
@@ -214,18 +217,32 @@ class WallpaperManager {
                 if (Array.isArray(wallpaperResult.data.subscribed)) {
                     this.wallpapers.subscribed = wallpaperResult.data.subscribed;
                     this.subscribedTotal = this.wallpapers.subscribed.length;
+                    this.subscribedTotalPages = 1;
                 } else {
-                    this.wallpapers.subscribed = wallpaperResult.data.subscribed.wallpapers || [];
-                    this.subscribedTotal = wallpaperResult.data.subscribed.total || 0;
+                    const sub = wallpaperResult.data.subscribed;
+                    this.wallpapers.subscribed = sub.wallpapers || [];
+                    this.subscribedTotal = sub.total || 0;
+                    this.subscribedTotalPages = sub.total_pages || 1;
+                    // 服务端自动修正页码，前端同步
+                    if (sub.page && sub.page !== this.subscribedPage) {
+                        this.subscribedPage = sub.page;
+                    }
                 }
-                
+
                 // 处理未订阅数据
                 if (Array.isArray(wallpaperResult.data.unsubscribed)) {
                     this.wallpapers.unsubscribed = wallpaperResult.data.unsubscribed;
                     this.unsubscribedTotal = this.wallpapers.unsubscribed.length;
+                    this.unsubscribedTotalPages = 1;
                 } else {
-                    this.wallpapers.unsubscribed = wallpaperResult.data.unsubscribed.wallpapers || [];
-                    this.unsubscribedTotal = wallpaperResult.data.unsubscribed.total || 0;
+                    const unsub = wallpaperResult.data.unsubscribed;
+                    this.wallpapers.unsubscribed = unsub.wallpapers || [];
+                    this.unsubscribedTotal = unsub.total || 0;
+                    this.unsubscribedTotalPages = unsub.total_pages || 1;
+                    // 服务端自动修正页码，前端同步
+                    if (unsub.page && unsub.page !== this.unsubscribedPage) {
+                        this.unsubscribedPage = unsub.page;
+                    }
                 }
             } else {
                 this.showToast('Error loading wallpapers: ' + wallpaperResult.error, 'error');
@@ -357,60 +374,246 @@ class WallpaperManager {
 
     renderPagination() {
         // 已订阅分页
-        this.renderSinglePagination('subscribedPagination', this.subscribedPage, this.subscribedTotal, (page) => {
-            this.subscribedPage = page;
-            this.loadData();
-        });
+        this.renderPageInfo('subscribedPageInfo', this.subscribedPage, this.pageSize, this.subscribedTotal);
+        this.renderPaginationControls('subscribedPaginationControls', 'subscribed',
+            this.subscribedPage, this.subscribedTotal, this.subscribedTotalPages,
+            (page) => { this.subscribedPage = page; this.loadData(); });
+
         // 未订阅分页
-        this.renderSinglePagination('unsubscribedPagination', this.unsubscribedPage, this.unsubscribedTotal, (page) => {
-            this.unsubscribedPage = page;
-            this.loadData();
-        });
+        this.renderPageInfo('unsubscribedPageInfo', this.unsubscribedPage, this.pageSize, this.unsubscribedTotal);
+        this.renderPaginationControls('unsubscribedPaginationControls', 'unsubscribed',
+            this.unsubscribedPage, this.unsubscribedTotal, this.unsubscribedTotalPages,
+            (page) => { this.unsubscribedPage = page; this.loadData(); });
     }
 
-    renderSinglePagination(containerId, currentPage, totalItems, onPageChange) {
+    /**
+     * 渲染分页控件区：翻页按钮 + 每页条数选择器 + 页码跳转
+     */
+    renderPaginationControls(containerId, prefix, currentPage, totalItems, totalPages, onPageChange) {
         const container = document.getElementById(containerId);
         if (!container) return;
         container.innerHTML = '';
-        const totalPages = Math.max(1, Math.ceil(totalItems / this.pageSize));
+
+        // 空数据：隐藏整个工具栏
+        if (totalItems === 0) {
+            const toolbar = document.getElementById(prefix + 'Toolbar');
+            if (toolbar) toolbar.style.display = 'none';
+            return;
+        }
+        const toolbar = document.getElementById(prefix + 'Toolbar');
+        if (toolbar) toolbar.style.display = '';
+
+        // 翻页按钮
+        const nav = document.createElement('nav');
+        nav.setAttribute('aria-label', 'Pagination');
+        const ul = document.createElement('ul');
+        ul.className = 'pagination mb-0';
+        this._buildPaginationButtons(ul, currentPage, totalPages, onPageChange);
+        nav.appendChild(ul);
+        container.appendChild(nav);
+
+        // 每页条数选择器
+        container.appendChild(this._createPageSizeSelect());
+
+        // 页码跳转
+        container.appendChild(this._createPageJump(currentPage, totalPages, onPageChange));
+    }
+
+    /**
+     * 构建翻页按钮（首页 + 上一页 + 页码 + 下一页 + 尾页）
+     */
+    _buildPaginationButtons(ul, currentPage, totalPages, onPageChange) {
+        // 首页
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item' + (currentPage <= 1 ? ' disabled' : '');
+        firstLi.innerHTML = `<a class="page-link" href="#" aria-label="首页"><i class="fas fa-angle-double-left"></i></a>`;
+        firstLi.onclick = (e) => { e.preventDefault(); if (currentPage > 1) onPageChange(1); };
+        ul.appendChild(firstLi);
+
         // 上一页
         const prevLi = document.createElement('li');
         prevLi.className = 'page-item' + (currentPage <= 1 ? ' disabled' : '');
-        prevLi.innerHTML = `<a class="page-link" href="#">上一页</a>`;
-        prevLi.onclick = (e) => {
-            e.preventDefault();
-            if (currentPage > 1) onPageChange(currentPage - 1);
-        };
-        container.appendChild(prevLi);
-        // 页码
-        for (let i = 1; i <= totalPages; i++) {
-            if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
-                const pageLi = document.createElement('li');
-                pageLi.className = 'page-item' + (i === currentPage ? ' active' : '');
-                pageLi.innerHTML = `<a class="page-link" href="#">${i}</a>`;
-                pageLi.onclick = (e) => {
-                    e.preventDefault();
-                    if (i !== currentPage) onPageChange(i);
-                };
-                container.appendChild(pageLi);
-            } else if (i === currentPage - 3 || i === currentPage + 3) {
-                const ellipsisLi = document.createElement('li');
-                ellipsisLi.className = 'page-item disabled';
-                ellipsisLi.innerHTML = `<span class="page-link">...</span>`;
-                container.appendChild(ellipsisLi);
+        prevLi.innerHTML = `<a class="page-link" href="#" aria-label="上一页"><i class="fas fa-chevron-left"></i></a>`;
+        prevLi.onclick = (e) => { e.preventDefault(); if (currentPage > 1) onPageChange(currentPage - 1); };
+        ul.appendChild(prevLi);
+
+        // 页码按钮
+        const pages = this._buildPageNumbers(currentPage, totalPages);
+        pages.forEach(p => {
+            if (p === '...') {
+                const li = document.createElement('li');
+                li.className = 'page-item disabled';
+                li.innerHTML = `<span class="page-link">...</span>`;
+                ul.appendChild(li);
+            } else {
+                const li = document.createElement('li');
+                li.className = 'page-item' + (p === currentPage ? ' active' : '');
+                li.innerHTML = `<a class="page-link" href="#">${p}</a>`;
+                li.onclick = (e) => { e.preventDefault(); if (p !== currentPage) onPageChange(p); };
+                ul.appendChild(li);
             }
-        }
+        });
+
         // 下一页
         const nextLi = document.createElement('li');
         nextLi.className = 'page-item' + (currentPage >= totalPages ? ' disabled' : '');
-        nextLi.innerHTML = `<a class="page-link" href="#">下一页</a>`;
-        nextLi.onclick = (e) => {
-            e.preventDefault();
-            if (currentPage < totalPages) onPageChange(currentPage + 1);
-        };
-        container.appendChild(nextLi);
+        nextLi.innerHTML = `<a class="page-link" href="#" aria-label="下一页"><i class="fas fa-chevron-right"></i></a>`;
+        nextLi.onclick = (e) => { e.preventDefault(); if (currentPage < totalPages) onPageChange(currentPage + 1); };
+        ul.appendChild(nextLi);
+
+        // 尾页
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item' + (currentPage >= totalPages ? ' disabled' : '');
+        lastLi.innerHTML = `<a class="page-link" href="#" aria-label="尾页"><i class="fas fa-angle-double-right"></i></a>`;
+        lastLi.onclick = (e) => { e.preventDefault(); if (currentPage < totalPages) onPageChange(totalPages); };
+        ul.appendChild(lastLi);
     }
-    
+
+    /**
+     * 创建每页条数选择器 DOM
+     */
+    _createPageSizeSelect() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-size-wrap';
+        const select = document.createElement('select');
+        select.className = 'form-select page-size-select';
+        select.setAttribute('aria-label', '每页条数');
+        this.pageSizeOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.textContent = `${opt} 条/页`;
+            if (opt === this.pageSize) option.selected = true;
+            select.appendChild(option);
+        });
+        select.addEventListener('change', (e) => {
+            this.onPageSizeChange(parseInt(e.target.value));
+        });
+        wrapper.appendChild(select);
+        return wrapper;
+    }
+
+    /**
+     * 创建页码跳转组件 DOM
+     */
+    _createPageJump(currentPage, totalPages, onPageChange) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'page-jump-wrap';
+
+        const label = document.createElement('span');
+        label.className = 'page-jump-label';
+        label.textContent = '跳至';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'page-jump-input';
+        input.placeholder = String(currentPage);
+        input.setAttribute('aria-label', '跳转页码');
+        input.maxLength = 6;
+
+        const total = document.createElement('span');
+        total.className = 'page-jump-total';
+        total.textContent = `/ ${totalPages} 页`;
+
+        const btn = document.createElement('button');
+        btn.className = 'page-jump-btn';
+        btn.textContent = 'GO';
+        btn.setAttribute('aria-label', '跳转');
+
+        const doJump = () => {
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 1) {
+                input.value = '';
+                input.focus();
+                return;
+            }
+            const target = Math.min(val, totalPages);
+            if (target !== currentPage) {
+                onPageChange(target);
+            }
+            input.value = '';
+        };
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                doJump();
+            }
+        });
+        btn.addEventListener('click', doJump);
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        wrapper.appendChild(total);
+        wrapper.appendChild(btn);
+        return wrapper;
+    }
+
+    /**
+     * 构建页码数组，自动处理省略号
+     * 始终显示首页、末页、当前页及前后各2页；仅跳过 >=2 页的间隙才显示省略号
+     */
+    _buildPageNumbers(currentPage, totalPages) {
+        if (totalPages <= 7) {
+            return Array.from({ length: totalPages }, (_, i) => i + 1);
+        }
+
+        // 收集必须显示的页码：首页、末页、当前页 ±2
+        const range = new Set();
+        range.add(1);
+        range.add(totalPages);
+        for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+            range.add(i);
+        }
+
+        let sorted = [...range].sort((a, b) => a - b);
+
+        // 消除仅1页的孤立间隙：gap==2 时把中间那页也纳入显示
+        const expanded = new Set(sorted);
+        for (let i = 0; i < sorted.length - 1; i++) {
+            if (sorted[i + 1] - sorted[i] === 2) {
+                expanded.add(sorted[i] + 1);
+            }
+        }
+        sorted = [...expanded].sort((a, b) => a - b);
+
+        // 拼接结果：gap > 2 处插入省略号
+        const pages = [];
+        for (let i = 0; i < sorted.length - 1; i++) {
+            pages.push(sorted[i]);
+            if (sorted[i + 1] - sorted[i] > 2) {
+                pages.push('...');
+            }
+        }
+        pages.push(sorted[sorted.length - 1]);
+        return pages;
+    }
+
+    /**
+     * 渲染"第 X-Y 条，共 Z 条"分页信息
+     */
+    renderPageInfo(containerId, currentPage, pageSize, totalItems) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        if (totalItems === 0) {
+            container.textContent = '';
+            return;
+        }
+        const start = (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, totalItems);
+        container.textContent = `第 ${start}-${end} 条，共 ${totalItems} 条`;
+    }
+
+    /**
+     * 每页条数变更：重置到第一页并重新加载
+     */
+    onPageSizeChange(newSize) {
+        if (newSize === this.pageSize) return;
+        this.pageSize = newSize;
+        this.subscribedPage = 1;
+        this.unsubscribedPage = 1;
+        this.loadData();
+    }
+
     updateStatistics(stats) {
         document.getElementById('totalCount').textContent = stats.total.count;
         document.getElementById('totalSize').textContent = stats.total.size_formatted;
@@ -1010,10 +1213,10 @@ async function exportData(type) {
         if (window.wallpaperManager.currentUserFilter && window.wallpaperManager.currentUserFilter !== 'all') {
             params.append('user', window.wallpaperManager.currentUserFilter);
         }
-        // 使用大的页面大小来获取所有数据
+        // page_size=0 表示返回全部数据
         params.append('subscribed_page', 1);
         params.append('unsubscribed_page', 1);
-        params.append('page_size', 999999);
+        params.append('page_size', 0);
         url += params.toString();
         
         const response = await fetch(url);
