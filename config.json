@@ -1,6 +1,6 @@
 {
   "steam_library_path": "F:\\SteamLibrary\\steamapps\\workshop\\content\\431960",
-  "steam_userdata_path": "E:\\Software\\Steam\\userdata",
+  "steam_userdata_path": "C:\\Program Files (x86)\\Steam\\userdata",
   "server": {
     "host": "127.0.0.1",
     "port": 5000,
