@@ -50,7 +50,7 @@ for %%A in (dist\WallpaperManager.exe) do echo          %%~zA bytes
 echo ========================================
 echo.
 echo Note: config.json is bundled inside the exe. On first run it is
-echo copied to %%APPDATA%%\WallpaperManager\ and used from there.
+echo copied to %%APPDATA%%\WallpaperManager\config.json and used from there.
 echo.
 echo You can now run: dist\WallpaperManager.exe
 echo.

@@ -12,7 +12,6 @@ dist/
 build/
 
 # 本地配置与数据
-config.json
 search_history.json
 config.json.bak
 

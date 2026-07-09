@@ -18,16 +18,19 @@ from utils.paths import get_config_path, get_data_dir
 logger = logging.getLogger(__name__)
 
 
-# 搜索历史记录文件路径（打包后位于 %APPDATA%\WallpaperManager\）
-SEARCH_HISTORY_FILE = get_data_dir() / 'search_history.json'
 MAX_HISTORY_SIZE = 20
+
+
+def _get_search_history_path() -> Path:
+    return get_data_dir() / 'search_history.json'
 
 
 def _load_search_history() -> list:
     """从文件加载搜索历史记录"""
+    path = _get_search_history_path()
     try:
-        if SEARCH_HISTORY_FILE.exists():
-            with open(SEARCH_HISTORY_FILE, 'r', encoding='utf-8') as f:
+        if path.exists():
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError) as e:
@@ -38,7 +41,7 @@ def _load_search_history() -> list:
 def _save_search_history(history: list) -> None:
     """保存搜索历史记录到文件"""
     try:
-        with open(SEARCH_HISTORY_FILE, 'w', encoding='utf-8') as f:
+        with open(_get_search_history_path(), 'w', encoding='utf-8') as f:
             json.dump(history, f, ensure_ascii=False, indent=2)
     except OSError as e:
         logger.error("保存搜索历史失败: %s", e)
