@@ -5,7 +5,7 @@ Wallpaper API
 核心设计：
 - 分页查询时先取廉价的 ID 列表（仅 iterdir），搜索/分页后再按本页 ID
   并行计算完整信息，避免对全部壁纸做 rglob/project.json 读取。
-- 三级缓存（大小 / 标题 / 完整信息），按文件 mtime 失效，删除壁纸时主动清除。
+- 三级缓存（大小 / project.json 解析 / 完整信息），按文件 mtime 失效，删除壁纸时主动清除。
 """
 
 import json
@@ -27,6 +27,19 @@ logger = logging.getLogger(__name__)
 # 模块级线程池：壁纸信息计算为 I/O 密集型，多线程可显著加速本页计算
 _INFO_THREAD_POOL = ThreadPoolExecutor(max_workers=8)
 
+# contentrating 原始值 -> 中文标签（None/未知值由调用方兜底为“未分级”）
+_CONTENT_RATING_LABELS = {
+    'Everyone': '大众级',
+    'Questionable': '家长指导级',
+    'Mature': '成人级(R-18)',
+}
+# type 归一化值（小写）-> 中文标签
+_TYPE_LABELS = {
+    'scene': '场景',
+    'video': '视频',
+    'web': '网页',
+}
+
 
 class WallpaperAPI:
     """壁纸管理 API"""
@@ -41,8 +54,9 @@ class WallpaperAPI:
 
         # 大小缓存: {wallpaper_id: (size_bytes, folder_mtime)}，按 mtime 失效
         self._size_cache: dict = {}
-        # 标题缓存: {wallpaper_id: (title, project_json_mtime)}，按 mtime 失效
-        self._title_cache: dict = {}
+        # project.json 解析缓存: {wallpaper_id: (data_dict, project_json_mtime)}，按 mtime 失效
+        # 一次读取同时提供 title / content_rating / type，避免多字段各读一次磁盘
+        self._project_cache: dict = {}
         # 完整信息缓存: {wallpaper_id: (info_dict, timestamp)}，按 TTL 失效
         self._info_cache: dict = {}
         self._cache_lock = threading.Lock()
@@ -104,16 +118,45 @@ class WallpaperAPI:
 
         return self._sort_ids_by_size_desc(matching_ids, content_path)
 
-    def filter_ids_by_search(self, wallpaper_ids: list, search_query: Optional[str]) -> list:
-        """按标题搜索过滤 ID 列表（标题来自缓存，未提供搜索词时原样返回）"""
-        if not search_query or not search_query.strip():
+    def filter_ids(self, wallpaper_ids: list, search_query: Optional[str] = None,
+                   content_rating: Optional[str] = None,
+                   wallpaper_type: Optional[str] = None) -> list:
+        """
+        按标题搜索 + 年龄分级 + 类型过滤 ID 列表（字段均来自 project.json 解析缓存）
+
+        所有条件为空时原样返回。content_rating / wallpaper_type 取值约定：
+        具体值匹配该原始值（type 已归一化为小写）；'none' 匹配字段缺失；None/'' 不筛。
+        """
+        has_search = bool(search_query and search_query.strip())
+        has_rating = bool(content_rating and content_rating.strip())
+        has_type = bool(wallpaper_type and wallpaper_type.strip())
+        if not (has_search or has_rating or has_type):
             return wallpaper_ids
-        term = search_query.strip().lower()
+
+        term = search_query.strip().lower() if has_search else None
+        rating = content_rating.strip() if has_rating else None
+        wp_type = wallpaper_type.strip() if has_type else None
         content_path = self.steam_parser.get_content_path()
 
         def matches(wallpaper_id: str) -> bool:
-            title = self._get_wallpaper_title(wallpaper_id, content_path / wallpaper_id)
-            return term in title.lower()
+            data = self._get_project_data(wallpaper_id, content_path / wallpaper_id)
+            if term and term not in data['title'].lower():
+                return False
+            if rating:
+                cr = data['content_rating']
+                if rating == 'none':
+                    if cr is not None:
+                        return False
+                elif cr != rating:
+                    return False
+            if wp_type:
+                t = data['type']
+                if wp_type == 'none':
+                    if t is not None:
+                        return False
+                elif t != wp_type:
+                    return False
+            return True
 
         return [wid for wid in wallpaper_ids if matches(wid)]
 
@@ -309,7 +352,10 @@ class WallpaperAPI:
         if cached and (time.time() - cached[1] < self._INFO_CACHE_TTL):
             return dict(cached[0])
 
-        title = self._get_wallpaper_title(wallpaper_id, folder_path)
+        project = self._get_project_data(wallpaper_id, folder_path)
+        title = project['title']
+        content_rating = project['content_rating']
+        wp_type = project['type']
         size = self._get_folder_size_cached(wallpaper_id, folder_path)
         preview_path, preview_type = self.image_processor.find_preview_file(folder_path)
         subscription_details = self.steam_parser.get_subscription_details_by_user(wallpaper_id)
@@ -317,6 +363,10 @@ class WallpaperAPI:
         wallpaper_info = {
             'id': wallpaper_id,
             'title': title,
+            'content_rating': content_rating,
+            'content_rating_label': _CONTENT_RATING_LABELS.get(content_rating, '未分级'),
+            'type': wp_type,
+            'type_label': _TYPE_LABELS.get(wp_type, '未知'),
             'size': size,
             'size_formatted': self._format_size(size),
             'path': str(folder_path),
@@ -339,31 +389,47 @@ class WallpaperAPI:
         return dict(wallpaper_info)
 
     def _get_wallpaper_title(self, wallpaper_id: str, folder_path: Path) -> str:
-        """从 project.json 读取标题（按文件 mtime 缓存）"""
+        """从 project.json 读取标题（委托给 _get_project_data，共享解析缓存）"""
+        return self._get_project_data(wallpaper_id, folder_path)['title']
+
+    def _get_project_data(self, wallpaper_id: str, folder_path: Path) -> dict:
+        """
+        解析 project.json，返回 {title, content_rating, type}（按文件 mtime 缓存）
+
+        一次读取同时提供标题、年龄分级、类型三字段，避免多字段各自读盘。
+        content_rating 保留原始字符串；type 归一化为小写；缺失字段为 None。
+        """
         project_file = folder_path / "project.json"
+        fallback_title = f'ID: {folder_path.name}'
         if not project_file.exists():
-            return f'ID: {folder_path.name}'
+            return {'title': fallback_title, 'content_rating': None, 'type': None}
 
         try:
             mtime = project_file.stat().st_mtime
         except OSError:
             mtime = 0
 
-        cached = self._title_cache.get(wallpaper_id)
+        cached = self._project_cache.get(wallpaper_id)
         if cached and cached[1] == mtime:
             return cached[0]
 
-        title = f'ID: {folder_path.name}'
+        result = {'title': fallback_title, 'content_rating': None, 'type': None}
         try:
             with open(project_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            title = data.get('title', title)
+            result['title'] = data.get('title', fallback_title)
+            cr = data.get('contentrating')
+            if isinstance(cr, str):
+                result['content_rating'] = cr
+            t = data.get('type')
+            if isinstance(t, str):
+                result['type'] = t.lower()
         except (OSError, json.JSONDecodeError, ValueError) as e:
             logger.debug("读取 project.json 失败 (%s): %s", folder_path, e)
 
         with self._cache_lock:
-            self._title_cache[wallpaper_id] = (title, mtime)
-        return title
+            self._project_cache[wallpaper_id] = (result, mtime)
+        return result
 
     def _get_folder_size_cached(self, wallpaper_id: str, folder_path: Path) -> int:
         """获取文件夹大小（按文件夹 mtime 缓存，os.scandir 递归求和）"""
@@ -406,7 +472,7 @@ class WallpaperAPI:
         """清除单个壁纸的所有缓存"""
         with self._cache_lock:
             self._size_cache.pop(wallpaper_id, None)
-            self._title_cache.pop(wallpaper_id, None)
+            self._project_cache.pop(wallpaper_id, None)
             self._info_cache.pop(wallpaper_id, None)
 
     @staticmethod

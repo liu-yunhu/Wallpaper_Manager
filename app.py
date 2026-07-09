@@ -122,6 +122,8 @@ def create_app(config: Optional[dict] = None):
         try:
             user_filter = request.args.get('user', None)
             search_query = request.args.get('search', None)
+            content_rating = request.args.get('content_rating', None)
+            wallpaper_type = request.args.get('wallpaper_type', None)
             # 支持独立的页码参数，兼容旧的 page 参数
             subscribed_page = int(request.args.get('subscribed_page',
                                                    request.args.get('page', 1)))
@@ -140,9 +142,9 @@ def create_app(config: Optional[dict] = None):
                 sub_ids = wallpaper_api.list_wallpaper_ids(subscribed=True)
                 unsub_ids = wallpaper_api.list_wallpaper_ids(subscribed=False)
 
-            # 2. 按标题搜索过滤（标题来自缓存）
-            sub_ids = wallpaper_api.filter_ids_by_search(sub_ids, search_query)
-            unsub_ids = wallpaper_api.filter_ids_by_search(unsub_ids, search_query)
+            # 2. 按标题搜索 + 年龄分级 + 类型过滤（字段均来自 project.json 解析缓存）
+            sub_ids = wallpaper_api.filter_ids(sub_ids, search_query, content_rating, wallpaper_type)
+            unsub_ids = wallpaper_api.filter_ids(unsub_ids, search_query, content_rating, wallpaper_type)
 
             # 3. 分页后仅为本页计算完整信息
             return jsonify({
@@ -289,10 +291,11 @@ def create_app(config: Optional[dict] = None):
             parser = SteamParser(app.config)
 
             all_data = parser.get_all_subscription_data()
+            content_path = parser.get_content_path()
             users = []
             for user_id, user_subscriptions in all_data.items():
                 active_subscriptions = [item_id for item_id, details in user_subscriptions.items()
-                                        if details['is_active']]
+                                        if details['is_active'] and (content_path / item_id).exists()]
                 users.append({
                     'id': user_id,
                     'display_name': f"用户 {user_id}",

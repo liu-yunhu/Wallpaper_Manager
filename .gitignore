@@ -1,8 +1,23 @@
-/.github
-/.vscode
+# IDE
 .idea/
+.vscode/
+.github/
+
+# Python
 __pycache__/
-/build
-/dist
-/config.json.bak
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 本地配置与数据
+config.json
 search_history.json
+config.json.bak
+
+# pytest
+.pytest_cache/
+
+# Claude Code
+.claude/

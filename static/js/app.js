@@ -10,6 +10,8 @@ class WallpaperManager {
         this.users = [];
         this.currentUserFilter = 'all';
         this.currentSearchQuery = '';
+        this.currentContentRatingFilter = '';
+        this.currentTypeFilter = '';
         this.searchHistory = [];
 
         // 分页相关状态
@@ -84,15 +86,8 @@ class WallpaperManager {
             }
         });
         
-        // User filter
-        const userFilter = document.getElementById('userFilter');
-        if (userFilter) {
-            userFilter.addEventListener('change', (e) => {
-                this.currentUserFilter = e.target.value;
-                this.loadData();
-                this.loadStatistics(); // Also update statistics when user changes
-            });
-        }
+        // 自定义下拉筛选（类型 / 年龄分级 / 用户）
+        this.initFilterDropdowns();
         
         // Select all checkbox
         const selectAll = document.getElementById('selectAll');
@@ -110,7 +105,49 @@ class WallpaperManager {
             });
         });
     }
-    
+
+    // 自定义下拉筛选初始化：事件委托，兼容 userFilter 的动态填充
+    initFilterDropdowns() {
+        const handlers = {
+            user: (value) => {
+                this.currentUserFilter = value;
+                this.loadData();
+                this.loadStatistics();
+            },
+            type: (value) => {
+                this.currentTypeFilter = value;
+                this.subscribedPage = 1;
+                this.unsubscribedPage = 1;
+                this.loadData();
+            },
+            contentRating: (value) => {
+                this.currentContentRatingFilter = value;
+                this.subscribedPage = 1;
+                this.unsubscribedPage = 1;
+                this.loadData();
+            }
+        };
+
+        document.querySelectorAll('.filter-dropdown').forEach(dd => {
+            const key = dd.dataset.filter;
+            const handler = handlers[key];
+            if (!handler) return;
+            const valueSpan = dd.querySelector('.filter-select-value');
+            const menu = dd.querySelector('.filter-select-menu');
+            if (!valueSpan || !menu) return;
+
+            menu.addEventListener('click', (e) => {
+                const item = e.target.closest('.filter-select-item');
+                if (!item) return;
+                e.preventDefault();
+                valueSpan.textContent = item.textContent.trim();
+                menu.querySelectorAll('.filter-select-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                handler(item.dataset.value);
+            });
+        });
+    }
+
     async loadConfiguration() {
         try {
             const response = await fetch('/api/config');
@@ -153,20 +190,25 @@ class WallpaperManager {
     }
     
     populateUserFilter() {
-        const userFilter = document.getElementById('userFilter');
-        if (!userFilter) return;
-        
-        // Clear existing options except "所有用户"
-        while (userFilter.children.length > 1) {
-            userFilter.removeChild(userFilter.lastChild);
+        const menu = document.querySelector('.filter-dropdown[data-filter="user"] .filter-select-menu');
+        if (!menu) return;
+
+        // 保留第一项（所有用户），移除其余动态项
+        const items = menu.querySelectorAll('.filter-select-item');
+        for (let i = items.length - 1; i >= 1; i--) {
+            items[i].closest('li').remove();
         }
-        
-        // Add user options
+
+        // 追加用户选项（选中事件由 menu 上的委托统一处理）
         this.users.forEach(user => {
-            const option = document.createElement('option');
-            option.value = user.id;
-            option.textContent = `${user.display_name} (${user.subscription_count} 订阅)`;
-            userFilter.appendChild(option);
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item filter-select-item';
+            a.href = '#';
+            a.dataset.value = user.id;
+            a.textContent = `${user.display_name} (${user.subscription_count} 订阅)`;
+            li.appendChild(a);
+            menu.appendChild(li);
         });
     }
     
@@ -202,6 +244,12 @@ class WallpaperManager {
             }
             if (this.currentUserFilter && this.currentUserFilter !== 'all') {
                 params.append('user', this.currentUserFilter);
+            }
+            if (this.currentContentRatingFilter) {
+                params.append('content_rating', this.currentContentRatingFilter);
+            }
+            if (this.currentTypeFilter) {
+                params.append('wallpaper_type', this.currentTypeFilter);
             }
             // 分别传递已订阅和未订阅的页码
             params.append('subscribed_page', this.subscribedPage);
@@ -725,6 +773,18 @@ class WallpaperManager {
                 userInfo = `<small class="text-muted">👥 无用户订阅</small>`;
             }
         }
+
+        // 类型与年龄分级标签
+        const typeKey = wallpaper.type || 'unknown';
+        const typeLabel = wallpaper.type_label || '未知';
+        const ratingKey = wallpaper.content_rating || 'none';
+        const ratingLabel = wallpaper.content_rating_label || '未分级';
+        const tagsHtml = `
+            <div class="wallpaper-tags">
+                <span class="badge type-badge type-${typeKey}">${typeLabel}</span>
+                <span class="badge rating-badge rating-${ratingKey}">${ratingLabel}</span>
+            </div>
+        `;
         
         return `
             <div class="wallpaper-card" data-id="${wallpaper.id}" onclick="wallpaperManager.showWallpaperDetail('${wallpaper.id}')">
@@ -745,6 +805,7 @@ class WallpaperManager {
                         <span class="wallpaper-id">ID: ${wallpaper.id}</span>
                         <span class="wallpaper-size">${wallpaper.size_formatted}</span>
                     </div>
+                    ${tagsHtml}
                     <div class="wallpaper-status">
                         <span class="badge ${statusClass}">${statusText}</span>
                         ${userInfo}
@@ -857,7 +918,9 @@ class WallpaperManager {
         document.getElementById('wallpaperDetailId').textContent = wallpaper.id;
         document.getElementById('wallpaperDetailTitle').textContent = wallpaper.title;
         document.getElementById('wallpaperDetailSize').textContent = wallpaper.size_formatted;
-        document.getElementById('wallpaperDetailStatus').innerHTML = 
+        document.getElementById('wallpaperDetailType').textContent = wallpaper.type_label || '未知';
+        document.getElementById('wallpaperDetailContentRating').textContent = wallpaper.content_rating_label || '未分级';
+        document.getElementById('wallpaperDetailStatus').innerHTML =
             `<span class="badge ${wallpaper.subscribed ? 'status-subscribed' : 'status-unsubscribed'}">
                 ${wallpaper.subscribed ? '已订阅' : '未订阅'}
             </span>`;
@@ -1245,12 +1308,14 @@ async function exportData(type) {
         }
         
         // Create CSV content
-        const headers = ['ID', '标题', '大小', '状态', '路径'];
+        const headers = ['ID', '标题', '类型', '年龄分级', '大小', '状态', '路径'];
         const csvContent = [
             headers.join(','),
             ...data.map(wp => [
                 wp.id,
                 `"${wp.title.replace(/"/g, '""')}"`,
+                wp.type_label || '未知',
+                wp.content_rating_label || '未分级',
                 wp.size_formatted,
                 wp.subscribed ? '已订阅' : '未订阅',
                 `"${wp.path.replace(/"/g, '""')}"`
