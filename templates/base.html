@@ -15,6 +15,9 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <!-- 键盘导航跳过链接 -->
+    <a href="#main-content" class="skip-to-main">跳到主内容</a>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
@@ -39,12 +42,12 @@
                 <ul class="navbar-nav">
                     <li class="nav-item">
                         <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#configModal">
-                            <i class="fas fa-cog me-1"></i>配置
+                            <i class="fas fa-cog"></i>配置
                         </button>
                     </li>
                     <li class="nav-item ms-2">
                         <button class="btn btn-outline-light btn-sm" onclick="refreshData()">
-                            <i class="fas fa-sync-alt me-1"></i>刷新
+                            <i class="fas fa-sync-alt"></i>刷新
                         </button>
                     </li>
                 </ul>
@@ -62,7 +65,7 @@
     </div>
 
     <!-- Main Content -->
-    <main class="container-fluid py-4">
+    <main class="container-fluid py-4" id="main-content">
         {% block content %}{% endblock %}
     </main>
 
@@ -124,7 +127,9 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+                    <button type="button" class="btn btn-primary" onclick="saveConfig()">
+                        <i class="fas fa-save"></i>保存配置
+                    </button>
                 </div>
             </div>
         </div>

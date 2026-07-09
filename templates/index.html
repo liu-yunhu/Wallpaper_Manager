@@ -63,7 +63,7 @@
                 <input type="text" class="form-control" id="searchInput"
                        placeholder="搜索壁纸标题..." autocomplete="off">
                 <button class="btn btn-primary" id="searchButton" type="button" title="搜索">
-                    <i class="fas fa-search"></i> 搜索
+                    <i class="fas fa-search"></i>搜索
                 </button>
                 <button class="btn btn-outline-secondary" id="searchHistoryToggle" type="button" title="搜索历史">
                     <i class="fas fa-history"></i>
@@ -114,11 +114,11 @@
         <div class="tab-content" id="wallpaperTabContent">
             <!-- Subscribed Wallpapers -->
             <div class="tab-pane fade show active" id="subscribed">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="action-bar mb-3">
                     <h6 class="mb-0">已订阅的壁纸</h6>
-                    <div>
+                    <div class="action-bar-right">
                         <button class="btn btn-outline-secondary btn-sm" onclick="exportData('subscribed')">
-                            <i class="fas fa-download me-1"></i>导出列表
+                            <i class="fas fa-download"></i>导出列表
                         </button>
                     </div>
                 </div>
@@ -140,22 +140,29 @@
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>注意：</strong>以下壁纸已不在订阅列表中，但文件仍存在。您可以安全地删除它们来释放存储空间。
                 </div>
-                
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="mb-0">未订阅的壁纸</h6>
-                    <div>
-                        <button class="btn btn-outline-secondary btn-sm me-2" onclick="exportData('unsubscribed')">
-                            <i class="fas fa-download me-1"></i>导出列表
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm me-2" onclick="deleteSelected()">
-                            <i class="fas fa-trash me-1"></i>删除选中
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteAll()">
-                            <i class="fas fa-trash-alt me-1"></i>删除全部
-                        </button>
+
+                <div class="action-bar mb-3">
+                    <div class="action-bar-left">
+                        <h6 class="mb-0">未订阅的壁纸</h6>
+                    </div>
+                    <div class="action-bar-right">
+                        <div class="action-group">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="exportData('unsubscribed')">
+                                <i class="fas fa-download"></i>导出列表
+                            </button>
+                        </div>
+                        <span class="action-group-divider"></span>
+                        <div class="action-group">
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteSelected()">
+                                <i class="fas fa-trash"></i>删除选中
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteAll()">
+                                <i class="fas fa-trash-alt"></i>删除全部
+                            </button>
+                        </div>
                     </div>
                 </div>
-                
+
                 <div class="mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="selectAll">
@@ -232,11 +239,11 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                <button type="button" class="btn btn-primary" onclick="openFolder()">
-                    <i class="fas fa-folder-open me-1"></i>打开文件夹
+                <button type="button" class="btn btn-outline-secondary" onclick="openFolder()">
+                    <i class="fas fa-folder-open"></i>打开文件夹
                 </button>
                 <button type="button" class="btn btn-danger" id="deleteButton" onclick="deleteWallpaper()">
-                    <i class="fas fa-trash me-1"></i>删除
+                    <i class="fas fa-trash"></i>删除
                 </button>
             </div>
         </div>
